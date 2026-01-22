@@ -173,15 +173,18 @@ int main(int argc, char* argv[])
                            "do not generate file for mesh, only for patches");
     argList::addBoolOption("noPointValues", "no pointFields");
     argList::addOption("excludePatches", "patches (wildcards) to exclude");
-    argList::addBoolOption("noFaceZones", "no faceZones");
+    argList::addBoolOption("faceZones", "Output faceZones");
     argList::addBoolOption(
         "full", "Output mesh in every file (disable separate grid file)");
+    argList::addBoolOption("patches", "Output boundary patches");
 
 #include "setRootCase.H"
 #include "createTime.H"
 
     const bool doWriteInternal = !args.optionFound("noInternal");
-    const bool doFaceZones = !args.optionFound("noFaceZones");
+    const bool doFaceZones = args.optionFound("faceZones");
+    const bool doPatches = args.optionFound("patches");
+
     const bool nearCellValue = args.optionFound("nearCellValue");
     const bool noPointValues = args.optionFound("noPointValues");
     const bool writeAllMesh = args.optionFound("full");
@@ -459,7 +462,11 @@ int main(int argc, char* argv[])
         // Prepare Patches (Moved here to merge with internal mesh output)
         // --------------------------------------------------------------------
         const polyBoundaryMesh& patches = mesh.boundaryMesh();
-        labelList patchIDs(getSelectedPatches(patches, excludePatches));
+        labelList patchIDs;
+        if (doPatches)
+        {
+            patchIDs = getSelectedPatches(patches, excludePatches);
+        }
         // --------------------------------------------------------------------
 
         // strandID (= piece id. Gets incremented for every piece of geometry
@@ -862,127 +869,6 @@ int main(int argc, char* argv[])
 
             continue;
         }
-
-        //---------------------------------------------------------------------
-        //
-        // Write patches as multi-zone file
-        //
-        //---------------------------------------------------------------------
-
-        // const polyBoundaryMesh& patches = mesh.boundaryMesh();
-
-        // labelList patchIDs(getSelectedPatches(patches, excludePatches));
-
-        // mkDir(fvPath / "boundaryMesh");
-
-        // fileName patchFileName;
-
-        // if (vMesh.useSubMesh())
-        // {
-        //     patchFileName =
-        //         fvPath / "boundaryMesh" / cellSetName + "_" + timeDesc +
-        //         ".plt";
-        // }
-        // else
-        // {
-        //     patchFileName = fvPath / "boundaryMesh" / "boundaryMesh" +
-        //     "_" +
-        //                     timeDesc + ".plt";
-        // }
-
-        // Info << "    Combined patches     : " << patchFileName << endl;
-
-        // tecplotWriter writer(runTime);
-
-        // string allVarNames = string("X Y Z ") + varNames;
-        // DynamicList<INTEGER4> allVarLocation;
-        // allVarLocation.append(ValueLocation_Nodal);
-        // allVarLocation.append(ValueLocation_Nodal);
-        // allVarLocation.append(ValueLocation_Nodal);
-        // allVarLocation.append(varLocation);
-
-        // writer.writeInit(
-        //     runTime.caseName(), allVarNames, patchFileName,
-        //     DataFileType_Full);
-
-        // forAll(patchIDs, i)
-        // {
-        //     label patchID = patchIDs[i];
-        //     const polyPatch& pp = patches[patchID];
-        //     // INTEGER4 strandID = 1 + i;
-
-        //     if (pp.size() > 0)
-        //     {
-        //         Info << "    Writing patch " << patchID << "\t" <<
-        //         pp.name()
-        //              << "\tstrand:" << strandID << nl << endl;
-
-        //         const indirectPrimitivePatch ipp(
-        //             IndirectList<face>(pp, identityMap(pp.size())),
-        //             pp.points());
-
-        //         writer.writePolygonalZone(pp.name(),
-        //                                   strandID++, // strandID,
-        //                                   ipp,
-        //                                   allVarLocation);
-
-        //         // Write coordinates
-        //         writer.writeField(ipp.localPoints().component(0)());
-        //         writer.writeField(ipp.localPoints().component(1)());
-        //         writer.writeField(ipp.localPoints().component(2)());
-
-        //         // Write all fields
-        //         forAll(vsf, i)
-        //         {
-        //             writer.writeField(
-        //                 writer.getPatchField(nearCellValue, vsf[i],
-        //                 patchID)());
-        //         }
-        //         forAll(vvf, i)
-        //         {
-        //             writer.writeField(
-        //                 writer.getPatchField(nearCellValue, vvf[i],
-        //                 patchID)());
-        //         }
-        //         forAll(vSpheretf, i)
-        //         {
-        //             writer.writeField(writer.getPatchField(
-        //                 nearCellValue, vSpheretf[i], patchID)());
-        //         }
-        //         forAll(vSymmtf, i)
-        //         {
-        //             writer.writeField(writer.getPatchField(
-        //                 nearCellValue, vSymmtf[i], patchID)());
-        //         }
-        //         forAll(vtf, i)
-        //         {
-        //             writer.writeField(
-        //                 writer.getPatchField(nearCellValue, vtf[i],
-        //                 patchID)());
-        //         }
-
-        //         forAll(psf, i)
-        //         {
-        //             writer.writeField(
-        //                 psf[i].boundaryField()[patchID].patchInternalField()());
-        //         }
-        //         forAll(pvf, i)
-        //         {
-        //             writer.writeField(
-        //                 pvf[i].boundaryField()[patchID].patchInternalField()());
-        //         }
-
-        //         writer.writeConnectivity(ipp);
-        //     }
-        //     else
-        //     {
-        //         Info << "    Skipping zero sized patch " << patchID <<
-        //         "\t"
-        //              << pp.name() << nl << endl;
-        //     }
-        // }
-        // writer.writeEnd();
-        // Info << endl;
 
         //---------------------------------------------------------------------
         //
