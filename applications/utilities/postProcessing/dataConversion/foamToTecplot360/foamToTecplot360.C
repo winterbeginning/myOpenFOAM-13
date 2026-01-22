@@ -455,13 +455,20 @@ int main(int argc, char* argv[])
         tecplotWriter::getTecplotNames(
             pvf, ValueLocation_Nodal, varNames, varLocation);
 
+        // --------------------------------------------------------------------
+        // Prepare Patches (Moved here to merge with internal mesh output)
+        // --------------------------------------------------------------------
+        const polyBoundaryMesh& patches = mesh.boundaryMesh();
+        labelList patchIDs(getSelectedPatches(patches, excludePatches));
+        // --------------------------------------------------------------------
+
         // strandID (= piece id. Gets incremented for every piece of geometry
         // that is output)
         INTEGER4 strandID = 1;
 
         if (writeAllMesh || meshState != fvMesh::UNCHANGED)
         {
-            if (doWriteInternal)
+            if (doWriteInternal || patchIDs.size() > 0)
             {
                 // Output mesh and fields
                 fileName vtkFileName(fvPath / vtkName + "_mesh_" + timeDesc +
@@ -481,49 +488,115 @@ int main(int argc, char* argv[])
                                  vtkFileName,
                                  DataFileType_Full);
 
-                writer.writePolyhedralZone(mesh.name(), // regionName
-                                           strandID++,  // strandID
-                                           mesh,
-                                           allVarLocation,
-                                           nFaceNodes);
+                if (doWriteInternal)
+                {
+                    writer.writePolyhedralZone(mesh.name(), // regionName
+                                               strandID++,  // strandID
+                                               mesh,
+                                               allVarLocation,
+                                               nFaceNodes);
 
-                // Write coordinates
-                writer.writeField(mesh.points().component(0)());
-                writer.writeField(mesh.points().component(1)());
-                writer.writeField(mesh.points().component(2)());
+                    // Write coordinates
+                    writer.writeField(mesh.points().component(0)());
+                    writer.writeField(mesh.points().component(1)());
+                    writer.writeField(mesh.points().component(2)());
 
-                // Write all fields
-                forAll(vsf, i)
-                {
-                    writer.writeField(vsf[i]);
-                }
-                forAll(vvf, i)
-                {
-                    writer.writeField(vvf[i]);
-                }
-                forAll(vSpheretf, i)
-                {
-                    writer.writeField(vSpheretf[i]);
-                }
-                forAll(vSymmtf, i)
-                {
-                    writer.writeField(vSymmtf[i]);
-                }
-                forAll(vtf, i)
-                {
-                    writer.writeField(vtf[i]);
+                    // Write all fields
+                    forAll(vsf, i)
+                    {
+                        writer.writeField(vsf[i]);
+                    }
+                    forAll(vvf, i)
+                    {
+                        writer.writeField(vvf[i]);
+                    }
+                    forAll(vSpheretf, i)
+                    {
+                        writer.writeField(vSpheretf[i]);
+                    }
+                    forAll(vSymmtf, i)
+                    {
+                        writer.writeField(vSymmtf[i]);
+                    }
+                    forAll(vtf, i)
+                    {
+                        writer.writeField(vtf[i]);
+                    }
+
+                    forAll(psf, i)
+                    {
+                        writer.writeField(psf[i]);
+                    }
+                    forAll(pvf, i)
+                    {
+                        writer.writeField(pvf[i]);
+                    }
+
+                    writer.writeConnectivity(mesh);
                 }
 
-                forAll(psf, i)
+                // Write Patches (Merged)
+                forAll(patchIDs, i)
                 {
-                    writer.writeField(psf[i]);
-                }
-                forAll(pvf, i)
-                {
-                    writer.writeField(pvf[i]);
-                }
+                    label patchID = patchIDs[i];
+                    const polyPatch& pp = patches[patchID];
 
-                writer.writeConnectivity(mesh);
+                    if (pp.size() > 0)
+                    {
+                        const indirectPrimitivePatch ipp(
+                            IndirectList<face>(pp, identityMap(pp.size())),
+                            pp.points());
+
+                        writer.writePolygonalZone(
+                            pp.name(), strandID++, ipp, allVarLocation);
+
+                        // Write coordinates
+                        writer.writeField(ipp.localPoints().component(0)());
+                        writer.writeField(ipp.localPoints().component(1)());
+                        writer.writeField(ipp.localPoints().component(2)());
+
+                        // Write all fields
+                        forAll(vsf, i)
+                        {
+                            writer.writeField(writer.getPatchField(
+                                nearCellValue, vsf[i], patchID)());
+                        }
+                        forAll(vvf, i)
+                        {
+                            writer.writeField(writer.getPatchField(
+                                nearCellValue, vvf[i], patchID)());
+                        }
+                        forAll(vSpheretf, i)
+                        {
+                            writer.writeField(writer.getPatchField(
+                                nearCellValue, vSpheretf[i], patchID)());
+                        }
+                        forAll(vSymmtf, i)
+                        {
+                            writer.writeField(writer.getPatchField(
+                                nearCellValue, vSymmtf[i], patchID)());
+                        }
+                        forAll(vtf, i)
+                        {
+                            writer.writeField(writer.getPatchField(
+                                nearCellValue, vtf[i], patchID)());
+                        }
+                        forAll(psf, i)
+                        {
+                            writer.writeField(psf[i]
+                                                  .boundaryField()[patchID]
+                                                  .patchInternalField()());
+                        }
+                        forAll(pvf, i)
+                        {
+                            writer.writeField(pvf[i]
+                                                  .boundaryField()[patchID]
+                                                  .patchInternalField()());
+                        }
+
+                        writer.writeConnectivity(ipp);
+                    }
+                }
                 writer.writeEnd();
             }
         }
@@ -531,7 +604,7 @@ int main(int argc, char* argv[])
         {
             if (doWriteInternal)
             {
-                if (timeI == 0)
+                if (timeI == 0 && (doWriteInternal || patchIDs.size() > 0))
                 {
                     // Output static mesh only
                     fileName vtkFileName(fvPath / vtkName + "_grid_" +
@@ -544,70 +617,174 @@ int main(int argc, char* argv[])
                                      vtkFileName,
                                      DataFileType_Grid);
 
-                    writer.writePolyhedralZone(
-                        mesh.name(), // regionName
-                        strandID,    // strandID
-                        mesh,
-                        List<INTEGER4>(3, ValueLocation_Nodal),
-                        nFaceNodes);
+                    if (doWriteInternal)
+                    {
+                        writer.writePolyhedralZone(
+                            mesh.name(), // regionName
+                            strandID, // strandID - Keep same counters for next
+                                      // pass? No, strands track object
+                                      // identity.
+                            mesh,
+                            List<INTEGER4>(3, ValueLocation_Nodal),
+                            nFaceNodes);
 
-                    // Write coordinates
-                    writer.writeField(mesh.points().component(0)());
-                    writer.writeField(mesh.points().component(1)());
-                    writer.writeField(mesh.points().component(2)());
+                        // Write coordinates
+                        writer.writeField(mesh.points().component(0)());
+                        writer.writeField(mesh.points().component(1)());
+                        writer.writeField(mesh.points().component(2)());
 
-                    writer.writeConnectivity(mesh);
+                        writer.writeConnectivity(mesh);
+                    }
+                    // Note: We need to increment strandID locally for patches
+                    // but reset it for the solution file
+                    // to match Zone correspondence? No, in Tecplot .plt, Zone
+                    // order matters most. StrandID is for time-tracking.
+
+                    INTEGER4 tempStrandID =
+                        (doWriteInternal ? strandID + 1 : strandID);
+
+                    forAll(patchIDs, i)
+                    {
+                        label patchID = patchIDs[i];
+                        const polyPatch& pp = patches[patchID];
+                        if (pp.size() > 0)
+                        {
+                            const indirectPrimitivePatch ipp(
+                                IndirectList<face>(pp, identityMap(pp.size())),
+                                pp.points());
+
+                            writer.writePolygonalZone(
+                                pp.name(),
+                                tempStrandID++,
+                                ipp,
+                                List<INTEGER4>(3, ValueLocation_Nodal));
+
+                            writer.writeField(ipp.localPoints().component(0)());
+                            writer.writeField(ipp.localPoints().component(1)());
+                            writer.writeField(ipp.localPoints().component(2)());
+                            writer.writeConnectivity(ipp);
+                        }
+                    }
                     writer.writeEnd();
                 }
 
-                // Output solution file
-                fileName vtkFileName(fvPath / vtkName + "_noMesh_" + timeDesc +
-                                     ".plt");
+                // Solution File (Data Only)
+                if (doWriteInternal || patchIDs.size() > 0)
+                {
+                    // Output solution file
+                    fileName vtkFileName(fvPath / vtkName + "_noMesh_" +
+                                         timeDesc + ".plt");
 
-                tecplotWriter writer(runTime);
+                    tecplotWriter writer(runTime);
 
-                writer.writeInit(runTime.caseName(),
-                                 varNames,
-                                 vtkFileName,
-                                 DataFileType_Solution);
+                    writer.writeInit(runTime.caseName(),
+                                     varNames,
+                                     vtkFileName,
+                                     DataFileType_Solution);
 
-                writer.writePolyhedralZone(mesh.name(), // regionName
-                                           strandID++,  // strandID
-                                           mesh,
-                                           varLocation,
-                                           0);
+                    if (doWriteInternal)
+                    {
+                        writer.writePolyhedralZone(mesh.name(), // regionName
+                                                   strandID++,  // strandID
+                                                   mesh,
+                                                   varLocation,
+                                                   0);
 
-                // Write all fields
-                forAll(vsf, i)
-                {
-                    writer.writeField(vsf[i]);
-                }
-                forAll(vvf, i)
-                {
-                    writer.writeField(vvf[i]);
-                }
-                forAll(vSpheretf, i)
-                {
-                    writer.writeField(vSpheretf[i]);
-                }
-                forAll(vSymmtf, i)
-                {
-                    writer.writeField(vSymmtf[i]);
-                }
-                forAll(vtf, i)
-                {
-                    writer.writeField(vtf[i]);
-                }
+                        // Write all fields
+                        forAll(vsf, i)
+                        {
+                            writer.writeField(vsf[i]);
+                        }
+                        forAll(vvf, i)
+                        {
+                            writer.writeField(vvf[i]);
+                        }
+                        forAll(vSpheretf, i)
+                        {
+                            writer.writeField(vSpheretf[i]);
+                        }
+                        forAll(vSymmtf, i)
+                        {
+                            writer.writeField(vSymmtf[i]);
+                        }
+                        forAll(vtf, i)
+                        {
+                            writer.writeField(vtf[i]);
+                        }
+                        forAll(psf, i)
+                        {
+                            writer.writeField(psf[i]);
+                        }
+                        forAll(pvf, i)
+                        {
+                            writer.writeField(pvf[i]);
+                        }
+                        // No connectivity in solution file
+                    }
 
-                forAll(psf, i)
-                {
-                    writer.writeField(psf[i]);
+                    forAll(patchIDs, i)
+                    {
+                        label patchID = patchIDs[i];
+                        const polyPatch& pp = patches[patchID];
+
+                        if (pp.size() > 0)
+                        {
+                            // Use indirectPrimitivePatch just to satisfy
+                            // function signature, but no geometry writing
+                            // needed
+                            const indirectPrimitivePatch ipp(
+                                IndirectList<face>(pp, identityMap(pp.size())),
+                                pp.points());
+
+                            writer.writePolygonalZone(
+                                pp.name(), strandID++, ipp, varLocation);
+
+                            // No coordinates
+
+                            // Write all fields
+                            forAll(vsf, i)
+                            {
+                                writer.writeField(writer.getPatchField(
+                                    nearCellValue, vsf[i], patchID)());
+                            }
+                            forAll(vvf, i)
+                            {
+                                writer.writeField(writer.getPatchField(
+                                    nearCellValue, vvf[i], patchID)());
+                            }
+                            forAll(vSpheretf, i)
+                            {
+                                writer.writeField(writer.getPatchField(
+                                    nearCellValue, vSpheretf[i], patchID)());
+                            }
+                            forAll(vSymmtf, i)
+                            {
+                                writer.writeField(writer.getPatchField(
+                                    nearCellValue, vSymmtf[i], patchID)());
+                            }
+                            forAll(vtf, i)
+                            {
+                                writer.writeField(writer.getPatchField(
+                                    nearCellValue, vtf[i], patchID)());
+                            }
+                            forAll(psf, i)
+                            {
+                                writer.writeField(psf[i]
+                                                      .boundaryField()[patchID]
+                                                      .patchInternalField()());
+                            }
+                            forAll(pvf, i)
+                            {
+                                writer.writeField(pvf[i]
+                                                      .boundaryField()[patchID]
+                                                      .patchInternalField()());
+                            }
+
+                            // No connectivity
+                        }
+                    }
+                    writer.writeEnd();
                 }
-                forAll(pvf, i)
-                {
-                    writer.writeField(pvf[i]);
-                }
-                writer.writeEnd();
             }
         }
 
@@ -692,112 +869,120 @@ int main(int argc, char* argv[])
         //
         //---------------------------------------------------------------------
 
-        const polyBoundaryMesh& patches = mesh.boundaryMesh();
+        // const polyBoundaryMesh& patches = mesh.boundaryMesh();
 
-        labelList patchIDs(getSelectedPatches(patches, excludePatches));
+        // labelList patchIDs(getSelectedPatches(patches, excludePatches));
 
-        mkDir(fvPath / "boundaryMesh");
+        // mkDir(fvPath / "boundaryMesh");
 
-        fileName patchFileName;
+        // fileName patchFileName;
 
-        if (vMesh.useSubMesh())
-        {
-            patchFileName =
-                fvPath / "boundaryMesh" / cellSetName + "_" + timeDesc + ".plt";
-        }
-        else
-        {
-            patchFileName = fvPath / "boundaryMesh" / "boundaryMesh" + "_" +
-                            timeDesc + ".plt";
-        }
+        // if (vMesh.useSubMesh())
+        // {
+        //     patchFileName =
+        //         fvPath / "boundaryMesh" / cellSetName + "_" + timeDesc +
+        //         ".plt";
+        // }
+        // else
+        // {
+        //     patchFileName = fvPath / "boundaryMesh" / "boundaryMesh" +
+        //     "_" +
+        //                     timeDesc + ".plt";
+        // }
 
-        Info << "    Combined patches     : " << patchFileName << endl;
+        // Info << "    Combined patches     : " << patchFileName << endl;
 
-        tecplotWriter writer(runTime);
+        // tecplotWriter writer(runTime);
 
-        string allVarNames = string("X Y Z ") + varNames;
-        DynamicList<INTEGER4> allVarLocation;
-        allVarLocation.append(ValueLocation_Nodal);
-        allVarLocation.append(ValueLocation_Nodal);
-        allVarLocation.append(ValueLocation_Nodal);
-        allVarLocation.append(varLocation);
+        // string allVarNames = string("X Y Z ") + varNames;
+        // DynamicList<INTEGER4> allVarLocation;
+        // allVarLocation.append(ValueLocation_Nodal);
+        // allVarLocation.append(ValueLocation_Nodal);
+        // allVarLocation.append(ValueLocation_Nodal);
+        // allVarLocation.append(varLocation);
 
-        writer.writeInit(
-            runTime.caseName(), allVarNames, patchFileName, DataFileType_Full);
+        // writer.writeInit(
+        //     runTime.caseName(), allVarNames, patchFileName,
+        //     DataFileType_Full);
 
-        forAll(patchIDs, i)
-        {
-            label patchID = patchIDs[i];
-            const polyPatch& pp = patches[patchID];
-            // INTEGER4 strandID = 1 + i;
+        // forAll(patchIDs, i)
+        // {
+        //     label patchID = patchIDs[i];
+        //     const polyPatch& pp = patches[patchID];
+        //     // INTEGER4 strandID = 1 + i;
 
-            if (pp.size() > 0)
-            {
-                Info << "    Writing patch " << patchID << "\t" << pp.name()
-                     << "\tstrand:" << strandID << nl << endl;
+        //     if (pp.size() > 0)
+        //     {
+        //         Info << "    Writing patch " << patchID << "\t" <<
+        //         pp.name()
+        //              << "\tstrand:" << strandID << nl << endl;
 
-                const indirectPrimitivePatch ipp(
-                    IndirectList<face>(pp, identityMap(pp.size())),
-                    pp.points());
+        //         const indirectPrimitivePatch ipp(
+        //             IndirectList<face>(pp, identityMap(pp.size())),
+        //             pp.points());
 
-                writer.writePolygonalZone(pp.name(),
-                                          strandID++, // strandID,
-                                          ipp,
-                                          allVarLocation);
+        //         writer.writePolygonalZone(pp.name(),
+        //                                   strandID++, // strandID,
+        //                                   ipp,
+        //                                   allVarLocation);
 
-                // Write coordinates
-                writer.writeField(ipp.localPoints().component(0)());
-                writer.writeField(ipp.localPoints().component(1)());
-                writer.writeField(ipp.localPoints().component(2)());
+        //         // Write coordinates
+        //         writer.writeField(ipp.localPoints().component(0)());
+        //         writer.writeField(ipp.localPoints().component(1)());
+        //         writer.writeField(ipp.localPoints().component(2)());
 
-                // Write all fields
-                forAll(vsf, i)
-                {
-                    writer.writeField(
-                        writer.getPatchField(nearCellValue, vsf[i], patchID)());
-                }
-                forAll(vvf, i)
-                {
-                    writer.writeField(
-                        writer.getPatchField(nearCellValue, vvf[i], patchID)());
-                }
-                forAll(vSpheretf, i)
-                {
-                    writer.writeField(writer.getPatchField(
-                        nearCellValue, vSpheretf[i], patchID)());
-                }
-                forAll(vSymmtf, i)
-                {
-                    writer.writeField(writer.getPatchField(
-                        nearCellValue, vSymmtf[i], patchID)());
-                }
-                forAll(vtf, i)
-                {
-                    writer.writeField(
-                        writer.getPatchField(nearCellValue, vtf[i], patchID)());
-                }
+        //         // Write all fields
+        //         forAll(vsf, i)
+        //         {
+        //             writer.writeField(
+        //                 writer.getPatchField(nearCellValue, vsf[i],
+        //                 patchID)());
+        //         }
+        //         forAll(vvf, i)
+        //         {
+        //             writer.writeField(
+        //                 writer.getPatchField(nearCellValue, vvf[i],
+        //                 patchID)());
+        //         }
+        //         forAll(vSpheretf, i)
+        //         {
+        //             writer.writeField(writer.getPatchField(
+        //                 nearCellValue, vSpheretf[i], patchID)());
+        //         }
+        //         forAll(vSymmtf, i)
+        //         {
+        //             writer.writeField(writer.getPatchField(
+        //                 nearCellValue, vSymmtf[i], patchID)());
+        //         }
+        //         forAll(vtf, i)
+        //         {
+        //             writer.writeField(
+        //                 writer.getPatchField(nearCellValue, vtf[i],
+        //                 patchID)());
+        //         }
 
-                forAll(psf, i)
-                {
-                    writer.writeField(
-                        psf[i].boundaryField()[patchID].patchInternalField()());
-                }
-                forAll(pvf, i)
-                {
-                    writer.writeField(
-                        pvf[i].boundaryField()[patchID].patchInternalField()());
-                }
+        //         forAll(psf, i)
+        //         {
+        //             writer.writeField(
+        //                 psf[i].boundaryField()[patchID].patchInternalField()());
+        //         }
+        //         forAll(pvf, i)
+        //         {
+        //             writer.writeField(
+        //                 pvf[i].boundaryField()[patchID].patchInternalField()());
+        //         }
 
-                writer.writeConnectivity(ipp);
-            }
-            else
-            {
-                Info << "    Skipping zero sized patch " << patchID << "\t"
-                     << pp.name() << nl << endl;
-            }
-        }
-        writer.writeEnd();
-        Info << endl;
+        //         writer.writeConnectivity(ipp);
+        //     }
+        //     else
+        //     {
+        //         Info << "    Skipping zero sized patch " << patchID <<
+        //         "\t"
+        //              << pp.name() << nl << endl;
+        //     }
+        // }
+        // writer.writeEnd();
+        // Info << endl;
 
         //---------------------------------------------------------------------
         //
@@ -851,7 +1036,8 @@ int main(int argc, char* argv[])
 
                     writer.writePolygonalZone(
                         pp.name(),
-                        strandID++, // 1+patchIDs.size()+zoneI,    // strandID,
+                        strandID++, // 1+patchIDs.size()+zoneI,
+                                    // // strandID,
                         ipp,
                         allVarLocation);
 
