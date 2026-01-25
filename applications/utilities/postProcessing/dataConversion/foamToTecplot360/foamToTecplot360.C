@@ -1001,15 +1001,74 @@ int main(int argc, char* argv[])
 
                 Info << "    Lagrangian: " << lagrFileName << endl;
 
-                wordList labelNames(sprayObjs.names(labelIOField::typeName));
+                // wordList labelNames(sprayObjs.names(labelIOField::typeName));
+                // Info << "        labels            :";
+                // print(Info, labelNames);
+
+                // wordList
+                // scalarNames(sprayObjs.names(scalarIOField::typeName)); Info
+                // << "        scalars           :"; print(Info, scalarNames);
+
+                // wordList
+                // vectorNames(sprayObjs.names(vectorIOField::typeName)); Info
+                // << "        vectors           :"; print(Info, vectorNames);
+
+                wordList labelNamesAll(sprayObjs.names(labelIOField::typeName));
+                wordList labelNames;
+                if (selectedFields.size())
+                {
+                    forAll(labelNamesAll, ii)
+                    {
+                        if (selectedFields.found(labelNamesAll[ii]))
+                        {
+                            labelNames.append(labelNamesAll[ii]);
+                        }
+                    }
+                }
+                else
+                {
+                    labelNames = labelNamesAll;
+                }
                 Info << "        labels            :";
                 print(Info, labelNames);
 
-                wordList scalarNames(sprayObjs.names(scalarIOField::typeName));
+                wordList scalarNamesAll(
+                    sprayObjs.names(scalarIOField::typeName));
+                wordList scalarNames;
+                if (selectedFields.size())
+                {
+                    forAll(scalarNamesAll, ii)
+                    {
+                        if (selectedFields.found(scalarNamesAll[ii]))
+                        {
+                            scalarNames.append(scalarNamesAll[ii]);
+                        }
+                    }
+                }
+                else
+                {
+                    scalarNames = scalarNamesAll;
+                }
                 Info << "        scalars           :";
                 print(Info, scalarNames);
 
-                wordList vectorNames(sprayObjs.names(vectorIOField::typeName));
+                wordList vectorNamesAll(
+                    sprayObjs.names(vectorIOField::typeName));
+                wordList vectorNames;
+                if (selectedFields.size())
+                {
+                    forAll(vectorNamesAll, ii)
+                    {
+                        if (selectedFields.found(vectorNamesAll[ii]))
+                        {
+                            vectorNames.append(vectorNamesAll[ii]);
+                        }
+                    }
+                }
+                else
+                {
+                    vectorNames = vectorNamesAll;
+                }
                 Info << "        vectors           :";
                 print(Info, vectorNames);
 
